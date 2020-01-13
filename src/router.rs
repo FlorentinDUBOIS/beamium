@@ -7,18 +7,18 @@ use std::process::abort;
 use std::sync::Arc;
 use std::thread::sleep;
 use std::time::Duration;
-use uuid::Uuid;
 
-use failure::{format_err, Error};
+use failure::{Error, format_err};
 use futures::future::ok;
+use tokio::fs::{File, rename};
 use tokio::fs::remove_file;
-use tokio::fs::{rename, File};
 use tokio::prelude::*;
 use tokio::runtime::Runtime;
+use uuid::Uuid;
 
 use crate::conf;
+use crate::lib::{add_labels, remove_labels, Runner};
 use crate::lib::asynch::fs::Scanner;
-use crate::lib::{add_labels, Runner};
 
 #[derive(Clone, Debug)]
 pub struct Router {
@@ -120,7 +120,7 @@ impl Runner for Router {
 }
 
 impl Router {
-    fn load(path: PathBuf) -> impl Future<Item = Vec<String>, Error = Error> {
+    fn load(path: PathBuf) -> impl Future<Item=Vec<String>, Error=Error> {
         trace!("open file"; "path" => path.to_str());
         File::open(path)
             .map_err(|err| format_err!("could not open file, {}", err))
@@ -136,7 +136,7 @@ impl Router {
     fn process(
         lines: &[String],
         labels: &Arc<HashMap<String, String>>,
-    ) -> impl Future<Item = Vec<String>, Error = Error> {
+    ) -> impl Future<Item=Vec<String>, Error=Error> {
         let labels: Vec<String> = labels
             .to_owned()
             .iter()
@@ -160,7 +160,7 @@ impl Router {
         lines: &[String],
         params: &conf::Parameters,
         sinks: &[conf::Sink],
-    ) -> impl Future<Item = (), Error = Error> {
+    ) -> impl Future<Item=(), Error=Error> {
         let mut bulk = vec![];
 
         let mut idx = -1;
@@ -183,6 +183,8 @@ impl Router {
                     body
                 }
             };
+
+            let body: Vec<String> = body.iter().filter_map(|line| remove_labels(&line, &sink.filtered_labels).ok()).collect();
 
             if body.is_empty() {
                 continue;
@@ -218,7 +220,7 @@ impl Router {
         future::join_all(bulk).and_then(|_| ok(()))
     }
 
-    fn remove(path: PathBuf) -> impl Future<Item = (), Error = Error> {
+    fn remove(path: PathBuf) -> impl Future<Item=(), Error=Error> {
         trace!("remove file"; "path" => path.to_str());
         remove_file(path.to_owned())
             .map_err(|err| format_err!("could not remove file, {}", err))

@@ -43,6 +43,8 @@ pub(crate) struct RawSink {
     pub ttl: Option<String>,
     pub size: Option<String>,
     pub parallel: Option<usize>,
+    #[serde(rename = "filtered-labels")]
+    pub filtered_labels: Option<Vec<String>>,
     #[serde(rename = "keep-alive")]
     pub keep_alive: Option<bool>,
     #[serde(rename = "keep-alive-timeout")]
@@ -296,6 +298,7 @@ pub struct Sink {
     pub ttl: Duration,
     pub size: u64,
     pub parallel: usize,
+    pub filtered_labels: Vec<String>,
     pub keep_alive: bool,
     pub keep_alive_timeout: Duration,
 }
@@ -357,6 +360,11 @@ impl TryFrom<(String, RawSink)> for Sink {
             Some(parallel) => parallel,
         };
 
+        let filtered_labels = match raw_sink.filtered_labels {
+            Some(filtered_labels) => filtered_labels,
+            None => vec![],
+        };
+
         let keep_alive = match raw_sink.keep_alive {
             None => true,
             Some(keep_alive) => keep_alive,
@@ -374,6 +382,7 @@ impl TryFrom<(String, RawSink)> for Sink {
             size,
             selector,
             parallel,
+            filtered_labels,
             keep_alive,
             keep_alive_timeout,
         })

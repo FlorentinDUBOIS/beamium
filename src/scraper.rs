@@ -9,7 +9,7 @@ use std::thread::sleep;
 use std::time::{Duration, Instant};
 
 use failure::{format_err, Error};
-use futures::future::{err, ok};
+use futures::future::{err, ok, ExecuteErrorKind, Executor};
 use futures::{Future, Stream};
 use hyper::client::connect::dns::GaiResolver;
 use hyper::client::HttpConnector;
@@ -118,7 +118,18 @@ impl Runner for Scraper {
                     });
 
                 // Spawn the request on executor to send it
-                executor.spawn(process);
+                if let Err(err) = executor.execute(process) {
+                    match err.kind() {
+                        ExecuteErrorKind::Shutdown => {
+                            // This could occur when reloading
+                            error!("could not execute the future, runtime is closed");
+                        },
+                        _ => {
+                            return future::err(format_err!("could not execute future, got runtime error"));
+                        }
+                    }
+                }
+
 
                 // return that everything is good
                 ok(())

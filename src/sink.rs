@@ -7,8 +7,8 @@ use std::sync::{Arc, Mutex};
 use std::thread::sleep;
 use std::time::{Duration, SystemTime};
 
-use failure::Error;
-use futures::future::ok;
+use failure::{Error, format_err};
+use futures::future::{ok, Executor, ExecuteErrorKind};
 use futures::Stream;
 use prometheus::CounterVec;
 use tokio::fs::remove_file;
@@ -127,11 +127,23 @@ impl Runner for Sink {
                         .with_label_values(&[name.as_str()])
                         .inc();
 
-                    executor.spawn(
+                    let result = executor.execute(
                         remove_file(path.to_owned())
                             .and_then(|_| ok(()))
                             .map_err(move |err| { error!("could not remove file"; "error" => err.to_string(), "sink" => name.as_str(), "path" => path.to_str()); })
-                    )
+                    );
+
+                    if let Err(err) = result {
+                        match err.kind() {
+                            ExecuteErrorKind::Shutdown => {
+                                // This could occur when reloading
+                                error!("could not execute the future, runtime is closed");
+                            },
+                            _ => {
+                                return future::err(format_err!("could not execute future, got runtime error"));
+                            }
+                        }
+                    }
                 }
 
                 // Retrieve files that are not expired
@@ -189,11 +201,23 @@ impl Runner for Sink {
                             .with_label_values(&[name.as_str()])
                             .inc();
 
-                        executor.spawn(
+                        let result = executor.execute(
                             remove_file(path.to_owned())
                                 .and_then(|_| ok(()))
                                 .map_err(move |err| { error!("could not remove file"; "error" => err.to_string(), "sink" => name.as_str(), "path" => path.to_str()); })
                         );
+
+                        if let Err(err) = result {
+                            match err.kind() {
+                                ExecuteErrorKind::Shutdown => {
+                                    // This could occur when reloading
+                                    error!("could not execute the future, runtime is closed");
+                                },
+                                _ => {
+                                    return future::err(format_err!("could not execute future, got runtime error"));
+                                }
+                            }
+                        }
 
                         current_size -= meta.len();
                     }
